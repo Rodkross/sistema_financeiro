@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "623609718768",
+    "project_id": "sistema-financeiro-3d9ee",
+    "storage_bucket": "sistema-financeiro-3d9ee.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:623609718768:android:e90a952439a6a38ee81f35",
+        "android_client_info": {
+          "package_name": "com.example.sistema_financeiro"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHQ4AKwaKAQ-rdrQjYZtuMlTQAnmUltSU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

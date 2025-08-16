@@ -19,49 +19,51 @@ class DatabaseHelper {
 
   Future<Database> _initDatabase() async {
     String path = join(await getDatabasesPath(), 'financeiro.db');
+    
+    //await deleteDatabase(path);
+
     return await openDatabase(
       path,
-      version: 1,
-      onCreate: _onCreate,
+      version: 2,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE contas(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            descricao TEXT,
+            valor REAL,
+            data TEXT,
+            paga INTEGER DEFAULT 0
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE pagamentos(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            conta_id INTEGER,
+            transacao_id TEXT,
+            data_pagamento TEXT,
+            meio_pagamento TEXT
+          )
+        ''');
+      },
     );
   }
 
-  Future<void> _onCreate(Database db, int version) async {
-    await db.execute('''
-      CREATE TABLE contas(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        descricao TEXT,
-        valor REAL,
-        data TEXT,
-        paga INTEGER DEFAULT 0
-      )
-    ''');
-
-    await db.execute('''
-      CREATE TABLE pagamentos(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        conta_id INTEGER,
-        transacao_id TEXT,
-        data_pagamento TEXT,
-        meio_pagamento TEXT
-      )
-    ''');
-  }
-
-  Future<int> insertConta(Map<String, dynamic> conta) async {
-    Database db = await database;
-    return await db.insert('contas', conta);
-  }
-
+  // NOVO MÉTODO: Retorna todas as contas, pagas e não pagas
   Future<List<Map<String, dynamic>>> getContas() async {
     Database db = await database;
-    return await db.query('contas', where: 'paga = ?', whereArgs: [0]);
+    return await db.query('contas');
   }
 
+  // NOVO MÉTODO: Retorna todos os pagamentos
+  Future<List<Map<String, dynamic>>> getPagamentos() async {
+    Database db = await database;
+    return await db.query('pagamentos');
+  }
+  
   Future<List<Map<String, dynamic>>> getContasByFilter({
     DateTime? startDate,
     DateTime? endDate,
-    int? status, // 0 = em aberto, 1 = pagas, null = todas
+    int? status,
   }) async {
     Database db = await database;
     String? whereClause;
@@ -82,15 +84,17 @@ class DatabaseHelper {
       whereArgs.add(status);
     }
     
-    // Se o filtro for para contas em aberto, a data deve ser no futuro ou no passado
-    // para contas pagas, a data de pagamento deve estar no range
-    // A logica aqui vai depender do que você quer exibir, mas a query ja funciona
     return await db.query(
       'contas',
       where: whereClause,
       whereArgs: whereArgs.isNotEmpty ? whereArgs : null,
       orderBy: 'data ASC'
     );
+  }
+
+  Future<int> insertConta(Map<String, dynamic> conta) async {
+    Database db = await database;
+    return await db.insert('contas', conta);
   }
 
   Future<int> updateConta(Map<String, dynamic> conta) async {

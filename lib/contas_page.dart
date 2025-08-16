@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'database_helper.dart';
 import 'pagamentos_page.dart';
 import 'package:uuid/uuid.dart';
+import 'database_service.dart'; // Importa o novo serviço
 
 enum MeioPagamento { dinheiro, credito, debito, pix }
 
@@ -13,7 +14,7 @@ class ContaPagarPage extends StatefulWidget {
 }
 
 class _ContaPagarPageState extends State<ContaPagarPage> {
-  final dbHelper = DatabaseHelper();
+  final dbService = DatabaseService();
   List<Map<String, dynamic>> contas = [];
   bool isLoading = true;
   String? errorMessage;
@@ -68,7 +69,8 @@ class _ContaPagarPageState extends State<ContaPagarPage> {
     }
 
     try {
-      List<Map<String, dynamic>> listaContas = await dbHelper.getContasByFilter(
+      // Usa o DatabaseService para buscar dados localmente e sincronizar
+      List<Map<String, dynamic>> listaContas = await dbService.getContasByFilter(
         startDate: startDate,
         endDate: endDate,
         status: statusValue,
@@ -127,7 +129,7 @@ class _ContaPagarPageState extends State<ContaPagarPage> {
       'data': dataVencimento.toIso8601String(),
       'paga': 0,
     };
-    await dbHelper.insertConta(novaConta);
+    await dbService.insertConta(novaConta);
     _fetchContas(startDate: _startDate, endDate: _endDate, status: _filterStatus);
   }
 
@@ -138,7 +140,7 @@ class _ContaPagarPageState extends State<ContaPagarPage> {
       'valor': valor,
       'data': dataVencimento.toIso8601String(),
     };
-    await dbHelper.updateConta(contaAtualizada);
+    await dbService.updateConta(contaAtualizada);
     _fetchContas(startDate: _startDate, endDate: _endDate, status: _filterStatus);
   }
 
@@ -146,11 +148,11 @@ class _ContaPagarPageState extends State<ContaPagarPage> {
     final transacaoId = Uuid().v4();
     
     for (int id in selectedContasIds) {
-      await dbHelper.updateConta({
+      await dbService.updateConta({
         'id': id,
         'paga': 1,
       });
-      await dbHelper.insertPagamento({
+      await dbService.insertPagamento({
         'conta_id': id,
         'transacao_id': transacaoId,
         'data_pagamento': data.toIso8601String(),
@@ -658,7 +660,7 @@ class _ContaPagarPageState extends State<ContaPagarPage> {
                               final today = DateTime.now();
                               final todayZeroTime = DateTime(today.year, today.month, today.day);
                               final dataZeroTime = DateTime(dataVencimento.year, dataVencimento.month, dataVencimento.day);
-                              final vencida = dataZeroTime.isBefore(todayZeroTime);
+                              final vencida = dataZeroTime.isBefore(todayZeroTime) && !isPaga;
                               
                               final isSelected = selectedContasIds.contains(conta['id']);
                               
