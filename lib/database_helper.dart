@@ -19,8 +19,6 @@ class DatabaseHelper {
 
   Future<Database> _initDatabase() async {
     String path = join(await getDatabasesPath(), 'financeiro.db');
-    
-    //await deleteDatabase(path);
 
     return await openDatabase(
       path,
@@ -45,21 +43,24 @@ class DatabaseHelper {
           )
         ''');
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute("ALTER TABLE pagamentos ADD COLUMN transacao_id TEXT");
+        }
+      },
     );
   }
 
-  // NOVO MÉTODO: Retorna todas as contas, pagas e não pagas
   Future<List<Map<String, dynamic>>> getContas() async {
     Database db = await database;
     return await db.query('contas');
   }
 
-  // NOVO MÉTODO: Retorna todos os pagamentos
   Future<List<Map<String, dynamic>>> getPagamentos() async {
     Database db = await database;
     return await db.query('pagamentos');
   }
-  
+
   Future<List<Map<String, dynamic>>> getContasByFilter({
     DateTime? startDate,
     DateTime? endDate,
@@ -93,23 +94,53 @@ class DatabaseHelper {
   }
 
   Future<int> insertConta(Map<String, dynamic> conta) async {
-    Database db = await database;
-    return await db.insert('contas', conta);
+    try {
+      Database db = await database;
+      return await db.insert('contas', conta);
+    } catch (e) {
+      print('Erro ao inserir conta no SQLite: $e');
+      return -1;
+    }
   }
 
   Future<int> updateConta(Map<String, dynamic> conta) async {
-    Database db = await database;
-    return await db.update(
-      'contas',
-      conta,
-      where: 'id = ?',
-      whereArgs: [conta['id']],
-    );
+    try {
+      Database db = await database;
+      final Map<String, dynamic> contaSemNulos = conta..removeWhere((key, value) => value == null);
+      return await db.update(
+        'contas',
+        contaSemNulos,
+        where: 'id = ?',
+        whereArgs: [contaSemNulos['id']],
+      );
+    } catch (e) {
+      print('Erro ao atualizar conta no SQLite: $e');
+      return -1;
+    }
+  }
+
+  Future<int> deleteConta(int id) async {
+    try {
+      Database db = await database;
+      return await db.delete(
+        'contas',
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    } catch (e) {
+      print('Erro ao deletar conta no SQLite: $e');
+      return -1;
+    }
   }
 
   Future<int> insertPagamento(Map<String, dynamic> pagamento) async {
-    Database db = await database;
-    return await db.insert('pagamentos', pagamento);
+    try {
+      Database db = await database;
+      return await db.insert('pagamentos', pagamento);
+    } catch (e) {
+      print('Erro ao inserir pagamento no SQLite: $e');
+      return -1;
+    }
   }
 
   Future<List<Map<String, dynamic>>> getPagamentosPorData(DateTime data) async {
@@ -135,26 +166,29 @@ class DatabaseHelper {
 
   Future<void> revertPagamento(String transacaoId) async {
     Database db = await database;
-    await db.transaction((txn) async {
-      final List<Map<String, dynamic>> pagamentos = await txn.query(
-        'pagamentos',
-        where: 'transacao_id = ?',
-        whereArgs: [transacaoId],
-      );
-
-      for (var pagamento in pagamentos) {
-        await txn.update(
-          'contas',
-          {'paga': 0},
-          where: 'id = ?',
-          whereArgs: [pagamento['conta_id']],
+    try {
+      await db.transaction((txn) async {
+        final List<Map<String, dynamic>> pagamentos = await txn.query(
+          'pagamentos',
+          where: 'transacao_id = ?',
+          whereArgs: [transacaoId],
         );
-      }
-      await txn.delete(
-        'pagamentos',
-        where: 'transacao_id = ?',
-        whereArgs: [transacaoId],
-      );
-    });
+        for (var pagamento in pagamentos) {
+          await txn.update(
+            'contas',
+            {'paga': 0},
+            where: 'id = ?',
+            whereArgs: [pagamento['conta_id']],
+          );
+        }
+        await txn.delete(
+          'pagamentos',
+          where: 'transacao_id = ?',
+          whereArgs: [transacaoId],
+        );
+      });
+    } catch (e) {
+      print('Erro ao reverter pagamento no SQLite: $e');
+    }
   }
 }

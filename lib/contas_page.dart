@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'database_helper.dart';
 import 'pagamentos_page.dart';
 import 'package:uuid/uuid.dart';
-import 'database_service.dart'; // Importa o novo serviço
 
 enum MeioPagamento { dinheiro, credito, debito, pix }
 
@@ -14,7 +13,7 @@ class ContaPagarPage extends StatefulWidget {
 }
 
 class _ContaPagarPageState extends State<ContaPagarPage> {
-  final dbService = DatabaseService();
+  final dbHelper = DatabaseHelper();
   List<Map<String, dynamic>> contas = [];
   bool isLoading = true;
   String? errorMessage;
@@ -69,8 +68,7 @@ class _ContaPagarPageState extends State<ContaPagarPage> {
     }
 
     try {
-      // Usa o DatabaseService para buscar dados localmente e sincronizar
-      List<Map<String, dynamic>> listaContas = await dbService.getContasByFilter(
+      List<Map<String, dynamic>> listaContas = await dbHelper.getContasByFilter(
         startDate: startDate,
         endDate: endDate,
         status: statusValue,
@@ -129,7 +127,9 @@ class _ContaPagarPageState extends State<ContaPagarPage> {
       'data': dataVencimento.toIso8601String(),
       'paga': 0,
     };
-    await dbService.insertConta(novaConta);
+    
+    await dbHelper.insertConta(novaConta);
+    
     _fetchContas(startDate: _startDate, endDate: _endDate, status: _filterStatus);
   }
 
@@ -140,19 +140,42 @@ class _ContaPagarPageState extends State<ContaPagarPage> {
       'valor': valor,
       'data': dataVencimento.toIso8601String(),
     };
-    await dbService.updateConta(contaAtualizada);
+    await dbHelper.updateConta(contaAtualizada);
     _fetchContas(startDate: _startDate, endDate: _endDate, status: _filterStatus);
   }
 
+  Future<void> _deleteSelectedContas() async {
+    try {
+      for (int id in selectedContasIds) {
+        await dbHelper.deleteConta(id);
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Contas deletadas com sucesso!')),
+      );
+    } catch (e) {
+      print('Erro ao deletar contas: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Falha ao deletar uma ou mais contas.')),
+      );
+    } finally {
+      contas.removeWhere((conta) => selectedContasIds.contains(conta['id']));
+      setState(() {
+        isSelectionMode = false;
+        selectedContasIds.clear();
+      });
+      _fetchContas();
+    }
+  }
+
   Future<void> _marcarComoPaga(DateTime data, MeioPagamento meio) async {
-    final transacaoId = Uuid().v4();
+    final transacaoId = const Uuid().v4();
     
     for (int id in selectedContasIds) {
-      await dbService.updateConta({
+      await dbHelper.updateConta({
         'id': id,
         'paga': 1,
       });
-      await dbService.insertPagamento({
+      await dbHelper.insertPagamento({
         'conta_id': id,
         'transacao_id': transacaoId,
         'data_pagamento': data.toIso8601String(),
@@ -489,7 +512,7 @@ class _ContaPagarPageState extends State<ContaPagarPage> {
             builder: (context, StateSetter setStateInterno) {
               return Column(
                 mainAxisSize: MainAxisSize.min,
-                children: [
+                children: <Widget>[
                   ListTile(
                     title: Text(tempStartDate == null
                         ? 'Data Início: Não selecionada'
@@ -591,21 +614,7 @@ class _ContaPagarPageState extends State<ContaPagarPage> {
             : const Text('Contas a Pagar'),
         centerTitle: true,
         actions: isSelectionMode
-            ? <Widget>[
-                IconButton(
-                  icon: const Icon(Icons.check_circle_outline),
-                  onPressed: _showPaymentDialog,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.cancel),
-                  onPressed: () {
-                    setState(() {
-                      isSelectionMode = false;
-                      selectedContasIds.clear();
-                    });
-                  },
-                ),
-              ]
+            ? []
             : <Widget>[
                 PopupMenuButton<String>(
                   onSelected: (value) async {
@@ -717,18 +726,58 @@ class _ContaPagarPageState extends State<ContaPagarPage> {
           const Divider(),
           Padding(
             padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text('Total de Contas: R\$${_calculateTotal().toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                Text('Vencendo hoje: R\$${_calculateDailyTotal().toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                Text('Total de Vencidas: R\$${_calculateOverdueTotal().toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                Text('Total Pago: R\$${_calculatePaidTotal().toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Vencendo hoje: R\$${_calculateDailyTotal().toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text('Vencidas: R\$${_calculateOverdueTotal().toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text('Pago: R\$${_calculatePaidTotal().toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text('Total de Contas: R\$${_calculateTotal().toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
                 if (isSelectionMode)
-                  Text('Total Selecionado: R\$${_calculateSelectedTotal().toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text('Total Selecionado: R\$${_calculateSelectedTotal().toStringAsFixed(2)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
+                              IconButton(
+                                onPressed: _showPaymentDialog,
+                                icon: const Icon(Icons.check_circle_outline),
+                              ),
+                              IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    isSelectionMode = false;
+                                    selectedContasIds.clear();
+                                  });
+                                },
+                                icon: const Icon(Icons.cancel),
+                              ),
+                              IconButton(
+                                onPressed: _deleteSelectedContas,
+                                icon: const Icon(Icons.delete),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
-          ),
+          ),            
         ],
       ),
       floatingActionButton: !isSelectionMode
